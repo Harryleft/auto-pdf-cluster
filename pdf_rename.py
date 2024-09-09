@@ -1,99 +1,243 @@
 # -*- coding: utf-8 -*-
+"""
+pdf_rename 模块
+
+该模块提供了从PDF文件中提取文本并重命名文件的功能。主要功能包括：
+
+1. 从PDF文件中提取文本内容。
+2. 使用大语言模型（DeepSeek）从文本中提取并补充论文标题。
+3. 根据提取的标题重命名PDF文件。
+4. 检查输出目录中是否已经存在符合命名要求的PDF文件，避免重复处理。
+
+主要函数：
+- split_title(title): 将标题拆分为四个部分。
+- load_document(file_path): 解析PDF文档格式，返回文档内容字符串。
+- get_paper_title_with_deepseek(text, original_title): 使用DeepSeek模型从文本中提取并补充论文标题。
+- get_paper_title_with_qwen(text, original_title): 使用Qwen-Turbo模型从文本中提取并补充论文标题。
+- sanitize_filename(filename): 清理文件名，移除非法字符。
+- process_filename(filename): 处理文件名，根据不同情况进行相应的处理。
+- rename_pdf_files(folder_path, output_path): 重命名指定文件夹中的PDF文件。
+
+运行效果：
+    人物传记资料本体构建与可视...馆学家彭斐章九十自述》为例_司莉.pdf -> 人物传记资料本体构建与可视化——以《图书馆学家彭斐章九十自述》为例.pdf
+    农业科学数据集的本体构建与...以“棉花病害防治”领域为例_刘桂锋.pdf -> 农业科学数据集的本体构建与可视化研究以“棉花病害防治”领域为例.pdf
+    古籍中人物史料的关联组织研...文志》中西汉经学家群体为例_程结晶.pdf -> 古籍中人物史料的关联组织研究——以《汉书·艺文志》中西汉经学家群体为例.pdf
+"""
+
+import json
 import os
 import re
-from PyPDF2 import PdfReader
-import dashscope
+import logging
+import shutil
+from functools import lru_cache
 
-# 设置DashScope API密钥
-dashscope.api_key = "sk-279ed50b460648aab17c93307f17627a"
-qwen_model = "qwen-turbo"
+from openai import OpenAI
 
-def extract_text_from_pdf(pdf_path):
-    """从PDF文件中提取文本"""
-    with open(pdf_path, 'rb') as file:
-        reader = PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
+from langchain_community.document_loaders import (
+    PDFPlumberLoader,
+)
+
+# 设置日志
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+# DeepSeek配置
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.deepseek.com",
+)
 
 
-def get_paper_title(text):
-    """使用Qwen-Turbo模型从文本中提取论文标题"""
-    prompt = f"""
-    请从以下文本中提取论文的准确标题。注意以下几点：
-    1. 只返回标题本身，不要有其他任何内容。
-    2. 标题通常出现在文章的开头，是字体最大的文字。
-    3. 标题可能跨越多行，请完整提取。
-    4. 不要包含作者名、机构名等信息，只提取标题。
-    5. 如果有副标题，请一并提取，用冒号分隔主副标题。
+def split_title(title):
+    """将标题拆分为四个部分"""
+    match = re.match(r"^(.*?)(\.\.\.)(.*?)(_.*)$", title)
+    if match:
+        part1 = match.group(1)
+        part2 = match.group(2)
+        part3 = match.group(3)
+        part4 = match.group(4)
+        return part1, part2, part3, part4
+    else:
+        return title, "", "", ""
 
-    文本内容：
-    {text[:500]}
+
+def load_document(file_path):
+    """
+    解析多种文档格式的文件，返回文档内容字符串
+    :param file_path: 文档文件路径
+    :return: 返回文档内容的字符串
     """
 
-    response = dashscope.Generation.call(
-        model=qwen_model,
-        prompt=prompt,
-        max_tokens=200
-    )
+    # 定义文档解析加载器字典，根据文档类型选择对应的文档解析加载器类和输入参数
+    DOCUMENT_LOADER_MAPPING = {
+        ".pdf": (PDFPlumberLoader, {}),  # 暂时只对PDF文档进行处理
+    }
 
-    if response.status_code == 200:
-        return response.output.text.strip()
-    else:
-        print(f"Error: {response.code}, {response.message}")
+    ext = os.path.splitext(file_path)[1]  # 获取文件扩展名，确定文档类型
+    loader_tuple = DOCUMENT_LOADER_MAPPING.get(
+        ext
+    )  # 获取文档对应的文档解析加载器类和参数元组
+
+    if loader_tuple:  # 判断文档格式是否在加载器支持范围
+        loader_class, loader_args = loader_tuple  # 解包元组，获取文档解析加载器类和参数
+        loader = loader_class(
+            file_path, **loader_args
+        )  # 创建文档解析加载器实例，并传入文档文件路径
+        documents = loader.load()  # 加载文档
+        content = "\n".join(
+            [doc.page_content for doc in documents]
+        )  # 多页文档内容组合为字符串
+        return content[:500]  # 返回文档内容的字符串
+
+    print(file_path + f"，不支持的文档类型: '{ext}'")
+    return ""
+
+
+@lru_cache(maxsize=1000)
+def get_paper_title_with_deepseek(text, original_title):
+    """使用LLM模型从文本中提取并补充论文标题"""
+    part1, part2, part3, part4 = split_title(original_title)
+    part5 = ""
+    system_prompt = f"""
+        背景：  
+        你是一名小助手，需要根据输入的论文文本内容，将标题补充完整。
+                
+        >>>>>>>>>>>>>>>>>>>>>  
+        **规则：**  
+        请根据以下规则从文本中补充论文的准确标题：  
+        - 【只返回】最终的论文标题，【不得包含】其他任何内容。  
+        - 完整标题与输入标题相似，但可能存在【省略】或【不完整】的情况。
+        - 【完整提取】标题，若语义相近的标题跨越多行，说明可能存在【副标题】，请一并提取，使用【冒号】分隔主副标题。
+        - 【不得包含】作者名、机构名、期刊名等内容。 
+        - 根据从文本内容中识别到的标题，更新{part2}，更新后的{part2}中不得包含...符号。 
+        - 将更新后的{part2}内容放入{part5}中。
+        - 注意{part3}内容输出的完整，不要忽略该部分的输出整合。
+        - 最终输出标题中不得包含空格字符。
+        - 输出的论文标题必须为中文。
+                
+        **输出标题：**  
+        - 以JSON格式输出: ["title": "{part1}{part5}{part3}"]
+        
+    """
+
+    user_prompt = f"""
+    文本内容：
+    {text}        
+    """
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-coder",
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+
+        renamed_title = json.loads(response.choices[0].message.content)
+        return renamed_title.get("title", "")
+
+    except Exception as e:
+        logging.error(f"Error calling API: {str(e)}")
         return None
 
 
 def sanitize_filename(filename):
     """清理文件名，移除非法字符"""
-    return re.sub(r'[<>:"/\\|?*]', '', filename)
+    return re.sub(r'[<>:"/\\|?*]', "", filename)
 
 
 def process_filename(filename):
     """处理文件名，根据不同情况进行相应的处理"""
-    # 移除文件扩展名
     name_without_ext = os.path.splitext(filename)[0]
 
-    # 检查是否符合特定模式（以《开头的文件名）
-    if name_without_ext.startswith('《'):
-        return None  # 返回None表示需要使用大语言模型处理
+    # 检查文件名是否为正常的标题
+    if re.match(r"^[\u4e00-\u9fa5A-Za-z0-9\s]+$", name_without_ext):
+        return name_without_ext  # 返回原始文件名，表示跳过该文件
     else:
-        # 移除末尾的作者姓名（假设格式为 "_作者姓名"）
-        return re.sub(r'_[^_]+$', '', name_without_ext)
+        # 检查是否需要使用大语言模型处理
+        if "..." in name_without_ext:
+            return None  # 返回None表示需要使用大语言模型处理
+        else:
+            # 移除末尾的作者姓名（假设格式为 "_作者姓名"）
+            return re.sub(r"_[^_]+$", "", name_without_ext)
 
 
-def rename_pdf_files(folder_path):
+def rename_pdf_files(folder_path, output_path):
     """重命名指定文件夹中的PDF文件"""
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith('.pdf'):
-            file_path = os.path.join(folder_path, filename)
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
-            # 处理文件名
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith(".pdf"):
+            file_path = os.path.join(folder_path, filename)
             processed_name = process_filename(filename)
 
+            # 使用大语言模型处理非正常的文件名
             if processed_name is None:
-                # 需要使用大语言模型处理
-                pdf_text = extract_text_from_pdf(file_path)
-                paper_title = get_paper_title(pdf_text)
-                if paper_title:
-                    new_filename = sanitize_filename(paper_title) + '.pdf'
-                else:
-                    print(f"Could not extract title for {filename}")
+                try:
+                    # 从PDF文件中提取文本
+                    pdf_text = load_document(file_path)
+                    # 提取文件名
+                    original_title = os.path.splitext(filename)[0]
+                    # 使用大语言模型提取标题
+                    paper_title = get_paper_title_with_deepseek(
+                        pdf_text, original_title
+                    )
+                    if paper_title:
+                        new_filename = sanitize_filename(paper_title) + ".pdf"
+                    else:
+                        logging.warning(f"Could not extract title for {filename}")
+                        continue
+                except Exception as e:
+                    logging.error(f"Error processing {filename}: {str(e)}")
                     continue
+
+            elif processed_name == os.path.splitext(filename)[0]:
+                # 跳过正常标题的文件
+                logging.info(f"Skipping: {filename} (already a valid title)")
+                continue
             else:
                 # 直接使用处理后的文件名
-                new_filename = processed_name + '.pdf'
+                new_filename = processed_name + ".pdf"
 
-            new_file_path = os.path.join(folder_path, new_filename)
+            new_file_path = os.path.join(output_path, new_filename)
 
-            # 重命名文件
+            # 检查输出目录中是否已经存在符合命名要求的PDF文件
+            if os.path.exists(new_file_path):
+                logging.info(
+                    f"File already exists and is correctly named: {new_filename}"
+                )
+                continue
+
+            # 确保输出目录存在
+            if not os.path.exists(os.path.dirname(new_file_path)):
+                os.makedirs(os.path.dirname(new_file_path))
+
+            # 将新命名的文件复制到新文件夹中
             try:
-                os.rename(file_path, new_file_path)
-                print(f"Renamed: {filename} -> {new_filename}")
+                shutil.copy2(file_path, new_file_path)
+                logging.info(f"Copied: {filename} -> {new_filename}")
             except Exception as e:
-                print(f"Error renaming {filename}: {str(e)}")
+                logging.error(f"Error copying {filename}: {str(e)}")
 
-# 使用示例
-folder_path = "test_pdf_file"
-rename_pdf_files(folder_path)
+            # logging.info(f"Renamed: {filename} -> {new_filename}")
+
+
+def main():
+    """
+    主函数
+    :return:
+    """
+    # 使用示例
+    folder_path = "test_pdf_file"
+    output_path = "renamed_pdf_files"
+    rename_pdf_files(folder_path, output_path)
+
+
+if __name__ == "__main__":
+    main()
