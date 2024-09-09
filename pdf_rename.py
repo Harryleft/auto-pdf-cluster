@@ -127,8 +127,8 @@ def get_paper_title_with_deepseek(text, original_title):
     part1, part2, part3, _ = split_title(original_title)
     part5 = ""
     system_prompt = f"""
-        背景：  
-        你是一名小助手，需要根据输入的论文文本内容，将标题补充完整。
+        **背景**：  
+        你是一名文件命名助手，需要根据输入的论文文本内容，将标题补充完整。
                 
         >>>>>>>>>>>>>>>>>>>>>  
         **规则：**  
@@ -138,7 +138,7 @@ def get_paper_title_with_deepseek(text, original_title):
         - 【完整提取】标题，若语义相近的标题跨越多行，说明可能存在【副标题】，请一并提取，
         使用【冒号】分隔主副标题。
         - 【不得包含】作者名、机构名、期刊名等内容。 
-        - 根据从文本内容中识别到的标题，更新{part2}，更新后的{part2}中不得包含...符号。 
+        - 根据从文本内容中识别到的标题，更新{part2}，更新后的{part2}中不得包含...符号。
         - 将更新后的{part2}内容放入{part5}中。
         - 注意{part3}内容输出的完整，不要忽略该部分的输出整合。
         - 最终输出标题中不得包含空格字符。
@@ -151,7 +151,7 @@ def get_paper_title_with_deepseek(text, original_title):
 
     user_prompt = f"""
     文本内容：
-    {text}        
+    {text}
     """
 
     messages = [
