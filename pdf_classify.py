@@ -15,8 +15,7 @@ import shutil
 from openai import OpenAI
 
 import preprocess_title_with_kmeans
-from config import FORMATED_PDF_NAME_FOLDER, PDF_NAME_CACHE_FILE, \
-    PDF_CLASSIFICATION_DIR
+from config import FORMATED_PDF_NAME_FOLDER, PDF_NAME_CACHE_FILE, PDF_CLASSIFICATION_DIR
 from load_pdf import load_pdf_names
 
 # DeepSeek配置
@@ -24,6 +23,7 @@ deepseek_client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.deepseek.com/",
 )
+
 
 def classify_pdfs_with_llm(pdf_names):
     """
@@ -80,8 +80,8 @@ def classify_pdfs_with_llm(pdf_names):
         {
             "role": "user",
             "content": "请反思（Reflection）上述主题分类结果的合理性。"
-                       "确保每个有效主题类别至少包含3个标题，并且有效主题类别数量在5到10个之间。"
-                       "同时，仔细考虑是否有标题应该被归类为'未分类'。确保所有输入的文件名都得到处理。",
+            "确保每个有效主题类别至少包含3个标题，并且有效主题类别数量在5到10个之间。"
+            "同时，仔细考虑是否有标题应该被归类为'未分类'。确保所有输入的文件名都得到处理。",
         }
     )
     response = deepseek_client.chat.completions.create(
