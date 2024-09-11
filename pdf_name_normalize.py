@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PDF文件名规范化处理
+"""PDF文件名规范化处理模块
 
 该模块提供了从PDF文件中提取文本并重命名文件的功能。主要功能包括：
 
@@ -21,6 +21,7 @@
     农业科学数据集的本体构建与...以“棉花病害防治”领域为例_刘桂锋.pdf -> 农业科学数据集的本体构建与可视化研究以“棉花病害防治”领域为例.pdf
     古籍中人物史料的关联组织研...文志》中西汉经学家群体为例_程结晶.pdf -> 古籍中人物史料的关联组织研究——以《汉书·艺文志》中西汉经学家群体为例.pdf
 """
+
 import os
 import re
 import logging
@@ -41,51 +42,88 @@ logging.basicConfig(
 
 def load_pdf_content(file_path):
     """
-    解析多种文档格式的文件，返回文档内容字符串
-    :param file_path: 文档文件路径
-    :return: 返回文档内容的字符串
-    """
+    解析多种文档格式的文件，返回文档内容字符串。
 
-    # 定义文档解析加载器字典，根据文档类型选择对应的文档解析加载器类和输入参数
+    Args:
+        file_path (str): 文档文件路径。
+
+    Returns:
+        str: 返回文档内容的字符串。
+    """
     document_loader_mapping = {
-        ".pdf": (PDFPlumberLoader, {}),  # 暂时只对PDF文档进行处理
+        ".pdf": (PDFPlumberLoader, {}),
     }
 
-    ext = os.path.splitext(file_path)[1]  # 获取文件扩展名，确定文档类型
-    loader_tuple = document_loader_mapping.get(
-        ext
-    )  # 获取文档对应的文档解析加载器类和参数元组
+    ext = os.path.splitext(file_path)[1]
+    loader_tuple = document_loader_mapping.get(ext)
 
-    if loader_tuple:  # 判断文档格式是否在加载器支持范围
-        loader_class, loader_args = loader_tuple  # 解包元组，获取文档解析加载器类和参数
-        loader = loader_class(
-            file_path, **loader_args
-        )  # 创建文档解析加载器实例，并传入文档文件路径
-        documents = loader.load()  # 加载文档
-        content = "\n".join(
-            [doc.page_content for doc in documents]
-        )  # 多页文档内容组合为字符串
-        return content[:250]  # 返回文档内容的字符串
+    if loader_tuple:
+        loader_class, loader_args = loader_tuple
+        loader = loader_class(file_path, **loader_args)
+        documents = loader.load()
+        content = "\n".join([doc.page_content for doc in documents])
+        return content[:250]
 
     print(file_path + f"，不支持的文档类型: '{ext}'")
     return ""
 
 def sanitize_filename(filename):
-    """清理文件名，移除非法字符"""
+    """
+    清理文件名，移除非法字符。
+
+    Args:
+        filename (str): 原始文件名。
+
+    Returns:
+        str: 清理后的文件名。
+    """
     return re.sub(r'[<>:"/\\|?*]', "", filename)
 
-
 def create_output_directory(output_path):
+    """
+    创建输出目录。
+
+    Args:
+        output_path (str): 输出目录路径。
+    """
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
 def is_valid_pdf(filename):
+    """
+    检查文件是否为有效的PDF文件。
+
+    Args:
+        filename (str): 文��名。
+
+    Returns:
+        bool: 如果文件是PDF文件，返回True，否则返回False。
+    """
     return filename.lower().endswith(".pdf")
 
 def is_filename_valid(filename):
+    """
+    检查文件名是否符合规范。
+
+    Args:
+        filename (str): 文件名。
+
+    Returns:
+        bool: 如果文件名符合规范，返回True，否则返回False。
+    """
     return re.match(r"^\d+_.*\.pdf$", filename)
 
 def process_filename(filename, file_path):
+    """
+    处理文件名，根据不同情况进行相应的处理。
+
+    Args:
+        filename (str): 原始文件名。
+        file_path (str): 文件路径。
+
+    Returns:
+        str: 处理后的文件名，如果无法处理返回None。
+    """
     try:
         processed_name = get_paper_title_with_regx(filename)
         if processed_name is None:
@@ -106,6 +144,13 @@ def process_filename(filename, file_path):
         return None
 
 def rename_pdf_files(folder_path, output_path):
+    """
+    重命名指定文件夹中的PDF文件。
+
+    Args:
+        folder_path (str): 输入文件夹路径。
+        output_path (str): 输出文件夹路径。
+    """
     create_output_directory(output_path)
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -126,6 +171,13 @@ def rename_pdf_files(folder_path, output_path):
                 logging.error("处理文件时出错 %s: %s", filename, str(e))
 
 def move_file(file_path, new_file_path):
+    """
+    移动文件到新路径。
+
+    Args:
+        file_path (str): 原始文件路径。
+        new_file_path (str): 新文件路径。
+    """
     try:
         if not os.path.exists(new_file_path):
             shutil.move(file_path, new_file_path)
@@ -136,6 +188,13 @@ def move_file(file_path, new_file_path):
         logging.error("移动文件时出错 %s: %s", file_path, str(e))
 
 def copy_file(file_path, new_file_path):
+    """
+    复制文件到新路径。
+
+    Args:
+        file_path (str): 原始文件路径。
+        new_file_path (str): 新文件路径。
+    """
     try:
         if not os.path.exists(new_file_path):
             if not os.path.exists(os.path.dirname(new_file_path)):
