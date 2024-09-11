@@ -17,7 +17,7 @@ def find_optimal_clusters(data, max_k):
     使用肘部法则找到最佳聚类数量
 
     Args:
-        data (array-like): 输入数据。
+        data (array): 输入数据。
         max_k (int): 最大聚类数量。
 
     Returns:
