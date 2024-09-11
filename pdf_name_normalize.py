@@ -8,14 +8,6 @@
 3. 根据提取的标题重命名PDF文件。
 4. 检查输出目录中是否已经存在符合命名要求的PDF文件，避免重复处理。
 
-主要函数：
-- split_title(title): 将标题拆分为四个部分。
-- load_document(file_path): 解析PDF文档格式，返回文档内容字符串。
-- get_paper_title_with_deepseek(text, original_title): 使用DeepSeek模型从文本中提取并补充论文标题。
-- sanitize_filename(filename): 清理文件名，移除非法字符。
-- process_filename(filename): 处理文件名，根据不同情况进行相应的处理。
-- rename_pdf_files(folder_path, output_path): 重命名指定文件夹中的PDF文件。
-
 运行效果：
     人物传记资料本体构建与可视...馆学家彭斐章九十自述》为例_司莉.pdf -> 人物传记资料本体构建与可视化——以《图书馆学家彭斐章九十自述》为例.pdf
     农业科学数据集的本体构建与...以“棉花病害防治”领域为例_刘桂锋.pdf -> 农业科学数据集的本体构建与可视化研究以“棉花病害防治”领域为例.pdf
@@ -39,6 +31,7 @@ from load_pdf import get_paper_title_with_regx
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
 
 def load_pdf_content(file_path):
     """
@@ -67,6 +60,7 @@ def load_pdf_content(file_path):
     print(file_path + f"，不支持的文档类型: '{ext}'")
     return ""
 
+
 def sanitize_filename(filename):
     """
     清理文件名，移除非法字符。
@@ -79,6 +73,7 @@ def sanitize_filename(filename):
     """
     return re.sub(r'[<>:"/\\|?*]', "", filename)
 
+
 def create_output_directory(output_path):
     """
     创建输出目录。
@@ -88,6 +83,7 @@ def create_output_directory(output_path):
     """
     if not os.path.exists(output_path):
         os.makedirs(output_path)
+
 
 def is_valid_pdf(filename):
     """
@@ -101,6 +97,7 @@ def is_valid_pdf(filename):
     """
     return filename.lower().endswith(".pdf")
 
+
 def is_filename_valid(filename):
     """
     检查文件名是否符合规范。
@@ -112,6 +109,7 @@ def is_filename_valid(filename):
         bool: 如果文件名符合规范，返回True，否则返回False。
     """
     return re.match(r"^\d+_.*\.pdf$", filename)
+
 
 def process_filename(filename, file_path):
     """
@@ -143,6 +141,7 @@ def process_filename(filename, file_path):
         logging.error("处理文件名时出错 %s: %s", filename, str(e))
         return None
 
+
 def rename_pdf_files(folder_path, output_path):
     """
     重命名指定文件夹中的PDF文件。
@@ -170,6 +169,7 @@ def rename_pdf_files(folder_path, output_path):
             except Exception as e:
                 logging.error("处理文件时出错 %s: %s", filename, str(e))
 
+
 def move_file(file_path, new_file_path):
     """
     移动文件到新路径。
@@ -186,6 +186,7 @@ def move_file(file_path, new_file_path):
             logging.warning("目标文件已存在，跳过移动: %s", new_file_path)
     except MoveException as e:
         logging.error("移动文件时出错 %s: %s", file_path, str(e))
+
 
 def copy_file(file_path, new_file_path):
     """
